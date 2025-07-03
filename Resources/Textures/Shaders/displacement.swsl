@@ -11,8 +11,38 @@ void vertex() {
 void fragment() {
     highp vec4 displacementSample = texture2D(displacementMap, displacementUVOut);
     highp vec2 displacementValue = (displacementSample.xy - vec2(128.0 / 255.0)) / (1.0 - 128.0 / 255.0);
-    COLOR = zTexture(UV + displacementValue * TEXTURE_PIXEL_SIZE * displacementSize * vec2(1.0, -1.0));
+    highp vec2 dispVec = displacementValue * TEXTURE_PIXEL_SIZE * displacementSize * vec2(1.0, -1.0);
+
+    highp vec2 dispUV = UV + dispVec;
+
+    COLOR = zTexture(dispUV);
     COLOR.a *= displacementSample.a;
+
+    // Prevent maps from bleeding over from other sprites on the sprite sheet.
+
+    // Firstly, get the overall size of the packed sprite sheet.
+    highp vec2 pixelCount = vec2(1 / TEXTURE_PIXEL_SIZE.x, 1 / TEXTURE_PIXEL_SIZE.y);
+
+    // Secondly, figure out what pixel both the UV and displacement UV are on in the sprite sheet.
+    highp vec2 uvPixel = UV * pixelCount;
+    highp vec2 dispPixel = dispUV * pixelCount;
+
+    // Thirdly, make a bold assumption that every sprite is neatly arranged so that each has its
+    // own 32px grid.
+    // (Also assume nobody's trying to give a larger sprite a displacement map.)
+
+    // With this assumption in mind, each sprite in the sheet can be assumed to be representable
+    // as a multiple of (32, 32). And so:
+    uvPixel.x -= mod(uvPixel.x, 32.0);
+    uvPixel.y -= mod(uvPixel.y, 32.0);
+    dispPixel.x -= mod(dispPixel.x, 32.0);
+    dispPixel.y -= mod(dispPixel.y, 32.0);
+
+    // Compare the two pixel locations. If these differ, they're in different sprites, so hide the
+    // pixel for safety.
+    if (uvPixel.x != dispPixel.x || uvPixel.y != dispPixel.y) {
+        COLOR.a = 0.0;
+    }
 }
 
 
