@@ -299,7 +299,6 @@ public sealed partial class InstrumentSystem : SharedInstrumentSystem
         SetMaster(uid, null);
 
         TryParseTracks(uid, data);
-        instrument.MidiEventBuffer.Clear();
         instrument.Renderer.OnMidiEvent += instrument.MidiEventBuffer.Add;
 
         return true;
