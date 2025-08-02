@@ -183,13 +183,9 @@ public sealed partial class InstrumentSystem : SharedInstrumentSystem
                 instrument.Renderer.SendMidiEvent(RobustMidiEvent.AllNotesOff((byte)i, 0));
         }
 
-        // The bank should always be changed to the instrument's bank (usually 0).
-        // MIDI can play on arbitrary banks, including on banks that might have
-        // had custom instruments assigned to them.
-        instrument.Renderer.MidiBank = instrument.Instrument.Bank;
-
         if (!instrument.AllowProgramChange)
         {
+            instrument.Renderer.MidiBank = instrument.Instrument.Bank;
             instrument.Renderer.MidiProgram = instrument.Instrument.Program;
         }
 
