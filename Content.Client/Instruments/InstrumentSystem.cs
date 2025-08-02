@@ -3,6 +3,7 @@ using System.Linq;
 using Content.Shared.CCVar;
 using Content.Shared.Instruments;
 using Content.Shared.Physics;
+using Content.Shared.Verbs;
 using JetBrains.Annotations;
 using Robust.Client.Audio.Midi;
 using Robust.Shared.Audio.Midi;
@@ -39,6 +40,11 @@ public sealed partial class InstrumentSystem : SharedInstrumentSystem
         SubscribeNetworkEvent<InstrumentStartMidiEvent>(OnMidiStart);
         SubscribeNetworkEvent<InstrumentStopMidiEvent>(OnMidiStop);
 
+        SubscribeLocalEvent((Entity<InstrumentComponent> ent, ref GetVerbsEvent<AlternativeVerb> args) =>
+        {
+            AddStyleVerb(ent.Owner, ent.Comp, ref args);
+        });
+
         SubscribeLocalEvent<InstrumentComponent, ComponentShutdown>(OnShutdown);
         SubscribeLocalEvent<InstrumentComponent, ComponentHandleState>(OnHandleState);
         SubscribeLocalEvent<ActiveInstrumentComponent, AfterAutoHandleStateEvent>(OnActiveInstrumentAfterHandleState);
@@ -69,8 +75,8 @@ public sealed partial class InstrumentSystem : SharedInstrumentSystem
             return;
 
         component.Playing = state.Playing;
-        component.InstrumentProgram = state.InstrumentProgram;
-        component.InstrumentBank = state.InstrumentBank;
+        component.Instrument.Program = state.InstrumentProgram;
+        component.Instrument.Bank = state.InstrumentBank;
         component.AllowPercussion = state.AllowPercussion;
         component.AllowProgramChange = state.AllowProgramChange;
         component.RespectMidiLimits = state.RespectMidiLimits;
@@ -96,13 +102,13 @@ public sealed partial class InstrumentSystem : SharedInstrumentSystem
         RaiseNetworkEvent(new InstrumentSetMasterEvent(GetNetEntity(uid), GetNetEntity(masterUid)));
     }
 
-    public void SetFilteredChannel(EntityUid uid, int channel, bool value)
+    public void SetFilteredChannel(EntityUid uid, byte channel, bool value)
     {
         if (!TryComp(uid, out InstrumentComponent? instrument))
             return;
 
-        if(value)
-            instrument.Renderer?.SendMidiEvent(RobustMidiEvent.AllNotesOff((byte)channel, 0), false);
+        if (value)
+            instrument.Renderer?.SendMidiEvent(RobustMidiEvent.AllNotesOff(channel, 0), false);
 
         RaiseNetworkEvent(new InstrumentSetFilteredChannelEvent(GetNetEntity(uid), channel, value));
     }
@@ -177,10 +183,14 @@ public sealed partial class InstrumentSystem : SharedInstrumentSystem
                 instrument.Renderer.SendMidiEvent(RobustMidiEvent.AllNotesOff((byte)i, 0));
         }
 
+        // The bank should always be changed to the instrument's bank (usually 0).
+        // MIDI can play on arbitrary banks, including on banks that might have
+        // had custom instruments assigned to them.
+        instrument.Renderer.MidiBank = instrument.Instrument.Bank;
+
         if (!instrument.AllowProgramChange)
         {
-            instrument.Renderer.MidiBank = instrument.InstrumentBank;
-            instrument.Renderer.MidiProgram = instrument.InstrumentProgram;
+            instrument.Renderer.MidiProgram = instrument.Instrument.Program;
         }
 
         UpdateRendererMaster(instrument);
@@ -272,7 +282,6 @@ public sealed partial class InstrumentSystem : SharedInstrumentSystem
         instrument.MidiEventBuffer.Clear();
         instrument.Renderer.OnMidiEvent += instrument.MidiEventBuffer.Add;
         return true;
-
     }
 
     [Obsolete("Use overload that takes in byte[] instead.")]
@@ -292,10 +301,11 @@ public sealed partial class InstrumentSystem : SharedInstrumentSystem
             return false;
 
         SetMaster(uid, null);
-        TrySetChannels(uid, data);
 
+        TryParseTracks(uid, data);
         instrument.MidiEventBuffer.Clear();
         instrument.Renderer.OnMidiEvent += instrument.MidiEventBuffer.Add;
+
         return true;
     }
 
